@@ -201,6 +201,10 @@
             <input type="number" id="betSize" value="25" min="1">
         </div>
         <div class="control-group">
+            <label>Table Limit (Max)</label>
+            <input type="number" id="tableMax" value="1000" min="1">
+        </div>
+        <div class="control-group">
             <label style="color: #a78bfa;">Betting Strategy</label>
             <select id="strategy" onchange="updateStrategyInfo()">
                 <option value="flat">Flat Betting (Safe)</option>
@@ -283,7 +287,7 @@
         },
         martingale: {
             title: "Martingale (The 'Widowmaker')",
-            text: "Double your bet after every loss. Reset to base bet after a win. Risks HUGE losses to chase small wins. Watch the red lines crash!"
+            text: "Double your bet after every loss. Reset to base bet after a win. Warning: Table Limits ($1000+) will prevent you from doubling eventually, leading to crash!"
         },
         paroli: {
             title: "Paroli (The 'Anti-Martingale')",
@@ -304,7 +308,6 @@
         setTimeout(() => box.style.borderColor = '#8b5cf6', 300);
     }
 
-    // --- MATH ENGINE ---
     function playHandPro(currentBankroll, betSize, is6to5) {
         const bjPayout = is6to5 ? 1.2 : 1.5;
         const outcomes = [
@@ -327,61 +330,61 @@
         return currentBankroll - betSize; 
     }
 
-    // --- SIMULATION LOOP ---
     function runSimulation() {
-        // --- 1. GET & CLAMP INPUTS ---
+        // --- INPUTS & CLAMPS ---
         let startBankroll = parseFloat(document.getElementById('bankroll').value);
         let baseBet = parseFloat(document.getElementById('betSize').value);
+        let tableMax = parseFloat(document.getElementById('tableMax').value);
         let totalHands = parseInt(document.getElementById('hands').value);
         let simCount = parseInt(document.getElementById('sims').value);
         const strategy = document.getElementById('strategy').value;
         const is6to5 = document.getElementById('rules').value === 'bad';
 
-        // CLAMP: Simulations (1 to 100)
         if (simCount > 100) { simCount = 100; document.getElementById('sims').value = 100; }
         if (simCount < 1) simCount = 1;
 
-        // CLAMP: Hands (10 to 5000)
         if (totalHands > 5000) { totalHands = 5000; document.getElementById('hands').value = 5000; }
         if (totalHands < 10) totalHands = 10;
 
-        // CLAMP: Bankroll (Min $5)
         if (startBankroll < 5) {
             startBankroll = 5;
             document.getElementById('bankroll').value = 5;
         }
 
-        // CLAMP: Bet (Max = Bankroll, Min = 1)
         if (baseBet < 1) {
             baseBet = 1;
             document.getElementById('betSize').value = 1;
         }
         if (baseBet > startBankroll) {
-            baseBet = startBankroll; // Force bet down to match cash
+            baseBet = startBankroll; 
             document.getElementById('betSize').value = startBankroll;
+        }
+
+        if (tableMax < baseBet) {
+            tableMax = baseBet;
+            document.getElementById('tableMax').value = baseBet;
         }
 
         const allDatasets = [];
         let ruinedCount = 0;
         let finalBankrollSum = 0;
-        const labels = Array.from({length: totalHands + 1}, (_, i) => i);
 
         for (let i = 0; i < simCount; i++) {
             let bankroll = startBankroll;
-            const dataPoints = [bankroll];
+            // FIX: Using {x,y} objects for Linear Scale support
+            const dataPoints = [{x: 0, y: bankroll}];
             let isRuined = false;
 
             let currentBet = baseBet;
             let consecutiveWins = 0;
             
-            for (let h = 0; h < totalHands; h++) {
-                // CHANGED: Ruin is now < 1 (effectively 0), so $5 bankrolls can play
+            for (let h = 1; h <= totalHands; h++) {
                 if (bankroll < 1) { 
                     bankroll = 0;
                     isRuined = true;
                 } else {
-                    // Logic check: Can't bet more than you have
                     if (currentBet > bankroll) currentBet = bankroll;
+                    if (currentBet > tableMax) currentBet = tableMax;
 
                     let newBankroll = playHandPro(bankroll, currentBet, is6to5);
                     let profit = newBankroll - bankroll;
@@ -409,7 +412,8 @@
                     
                     bankroll = newBankroll;
                 }
-                dataPoints.push(bankroll);
+                // FIX: Push X/Y object
+                dataPoints.push({x: h, y: bankroll});
             }
 
             finalBankrollSum += bankroll;
@@ -453,16 +457,17 @@
         document.getElementById('stat-avg').innerText = `$${avg}`;
         document.getElementById('stat-survived').innerText = `${simCount - ruinedCount}/${simCount}`;
 
-        renderChart(labels, allDatasets, startBankroll);
+        renderChart(allDatasets, startBankroll, totalHands);
     }
 
-    function renderChart(labels, datasets, startLine) {
+    function renderChart(datasets, startLine, maxX) {
         const ctx = document.getElementById('chartCanvas').getContext('2d');
         if (myChart) myChart.destroy();
 
+        // FIX: Start Line using 2 points for optimization
         datasets.push({
             label: 'Start Bankroll',
-            data: new Array(labels.length).fill(startLine),
+            data: [{x: 0, y: startLine}, {x: maxX, y: startLine}],
             borderColor: '#fbbf24',
             borderWidth: 2,
             borderDash: [5, 5],
@@ -472,14 +477,19 @@
 
         myChart = new Chart(ctx, {
             type: 'line',
-            data: { labels: labels, datasets: datasets },
+            data: { datasets: datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false, 
                 animation: false, 
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
-                    x: { type: 'linear', display: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { 
+                        type: 'linear', // Works perfectly now with {x,y} data
+                        display: true, 
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        max: maxX
+                    },
                     y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' } }
                 },
                 elements: { line: { tension: 0 } }
@@ -487,7 +497,6 @@
         });
     }
 
-    // Initial load
     updateStrategyInfo();
     runSimulation();
 </script>
