@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Blackjack Variance & Strategy Simulator</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -17,8 +17,11 @@
             --text-muted: #94a3b8;
         }
 
+        /* GLOBAL BOX SIZING FIX */
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            font-family: 'Inter', system-ui, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             margin: 0;
@@ -27,10 +30,11 @@
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
-            max-width: 1100px;
+            max-width: 1200px; /* Increased slightly for 5 cols */
             width: 100%;
             background: var(--card-bg);
             padding: 30px;
@@ -50,11 +54,11 @@
             font-size: 2rem;
         }
 
-        /* INPUT GRID */
+        /* DETERMINISTIC GRID LAYOUT (5 COLUMNS) */
         .controls {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(5, 1fr); /* <--- UPDATED TO 5 */
+            gap: 15px; /* Slightly tighter gap to fit 5 */
             margin-bottom: 20px;
             padding: 25px;
             background: #0f172a;
@@ -64,25 +68,31 @@
 
         .control-group { display: flex; flex-direction: column; }
 
+        /* Span 2 cols for big dropdowns */
+        .wide-input { grid-column: span 2; }
+
         label {
-            font-size: 0.75rem;
+            font-size: 0.7rem; /* Slightly smaller text for density */
             text-transform: uppercase;
             letter-spacing: 0.5px;
             font-weight: 700;
             margin-bottom: 8px;
             color: var(--text-muted);
+            white-space: nowrap; /* Prevent wrapping */
         }
 
+        /* STANDARDIZED INPUT HEIGHTS */
         input, select {
             background: #1e293b;
             color: white;
-            padding: 12px;
+            padding: 0 12px;
+            height: 45px;
             border: 1px solid #475569;
             border-radius: 8px;
-            font-size: 1rem;
+            font-size: 0.95rem; /* Slightly smaller font for density */
+            width: 100%;
         }
         
-        /* Highlight specific inputs */
         #strategy { border-color: var(--primary); color: #c4b5fd; font-weight: 600; }
         #skill { border-color: var(--accent); color: #86efac; font-weight: 600; }
 
@@ -94,33 +104,17 @@
             margin-bottom: 30px;
         }
 
-        @media (max-width: 768px) {
-            .info-grid { grid-template-columns: 1fr; }
-        }
-
         .info-card {
             padding: 15px 20px;
             border-radius: 8px;
             text-align: left;
             transition: all 0.3s ease;
         }
-
-        .info-card strong {
-            display: block;
-            font-size: 1.1rem;
-            margin-bottom: 5px;
-        }
-
-        .info-card p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: #e2e8f0;
-            line-height: 1.4;
-        }
+        .info-card strong { display: block; font-size: 1.1rem; margin-bottom: 5px; }
+        .info-card p { margin: 0; font-size: 0.9rem; color: #e2e8f0; line-height: 1.4; }
 
         #strategyInfo { background: rgba(139, 92, 246, 0.1); border: 1px solid var(--primary); }
         #strategyInfo strong { color: #c4b5fd; }
-
         #skillInfo { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--accent); }
         #skillInfo strong { color: #86efac; }
 
@@ -149,9 +143,11 @@
             background: #0f172a;
             border-radius: 12px;
             border: 1px solid #334155;
+            flex-wrap: wrap;
+            gap: 15px;
         }
 
-        .stat-box { text-align: center; }
+        .stat-box { text-align: center; min-width: 120px; }
         .stat-val { font-size: 1.8rem; font-weight: 800; display: block; margin-bottom: 5px; }
         .stat-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
 
@@ -173,17 +169,40 @@
             margin-top: 15px;
             padding: 10px;
         }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 600;
-        }
-
+        .legend-item { display: flex; align-items: center; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
         .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; display: inline-block; }
         .line-dash { width: 25px; height: 0; border-top: 2px dashed #fbbf24; margin-right: 8px; display: inline-block; }
+
+        /* RESPONSIVE BREAKPOINTS */
+        
+        /* Large Tablet: 3 columns */
+        @media (max-width: 1100px) {
+            .controls { grid-template-columns: repeat(3, 1fr); }
+            /* Strategy/Skill take full width on this layout or span 2 */
+            .wide-input { grid-column: span 2; } 
+        }
+
+        /* Tablet: 2 columns */
+        @media (max-width: 768px) {
+            .controls { grid-template-columns: repeat(2, 1fr); }
+            .wide-input { grid-column: span 1; } /* Reset span to standard */
+        }
+
+        /* Mobile: 1 column */
+        @media (max-width: 600px) {
+            body { padding: 15px 10px; }
+            .container { padding: 15px; }
+            h1 { font-size: 1.5rem; margin-bottom: 20px; }
+            
+            .controls { grid-template-columns: 1fr; padding: 15px; }
+            .wide-input { grid-column: span 1; }
+            
+            .info-grid { grid-template-columns: 1fr; gap: 10px; }
+            .chart-container { height: 300px; }
+            .stat-val { font-size: 1.4rem; }
+            .legend-bar { gap: 10px; }
+            .legend-item { font-size: 0.75rem; }
+        }
     </style>
 </head>
 <body>
@@ -204,7 +223,6 @@
             <label>Table Limit (Max)</label>
             <input type="number" id="tableMax" value="1000" min="1">
         </div>
-        
         <div class="control-group">
             <label>Hands (Max 5000)</label>
             <input type="number" id="hands" value="1000" max="5000">
@@ -213,6 +231,7 @@
             <label>Simulations (Max 100)</label>
             <input type="number" id="sims" value="50" max="100">
         </div>
+
         <div class="control-group">
             <label>Rules</label>
             <select id="rules">
@@ -221,7 +240,7 @@
             </select>
         </div>
 
-        <div class="control-group">
+        <div class="control-group wide-input">
             <label style="color: #a78bfa;">Betting Strategy</label>
             <select id="strategy" onchange="updateStrategyInfo()">
                 <option value="flat">Flat Betting (Safe)</option>
@@ -231,12 +250,12 @@
             </select>
         </div>
         
-        <div class="control-group">
+        <div class="control-group wide-input">
             <label style="color: #86efac;">Player Skill</label>
             <select id="skill" onchange="updateSkillInfo()">
                 <option value="perfect">Perfect (Pro)</option>
                 <option value="average">Average (Tourist)</option>
-                <option value="poor">Poor (Gut Feel)</option>
+                <option value="poor">Poor (Drunk)</option>
             </select>
         </div>
 
@@ -299,7 +318,7 @@
     let myChart = null;
     const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
     
-    // DATA TEXT
+    // DESCRIPTIONS
     const strategyDescriptions = {
         flat: { title: "Flat Betting (Standard)", text: "Bet the same amount every hand. Minimizes volatility. Best for long playtime." },
         martingale: { title: "Martingale (The 'Widowmaker')", text: "Double after loss. Reset after win. Dangerous! Table Limits will eventually force a crash." },
@@ -398,6 +417,7 @@
         const is6to5 = document.getElementById('rules').value === 'bad';
         const skillLevel = document.getElementById('skill').value;
 
+        // Safety Clamps
         if (simCount > 100) { simCount = 100; document.getElementById('sims').value = 100; }
         if (simCount < 1) simCount = 1;
         if (totalHands > 5000) { totalHands = 5000; document.getElementById('hands').value = 5000; }
@@ -479,6 +499,7 @@
             });
         }
 
+        // Stats Update
         const ror = ((ruinedCount / simCount) * 100).toFixed(1);
         const avgRaw = finalBankrollSum / simCount;
         
@@ -523,6 +544,7 @@
         });
     }
 
+    // Init
     updateStrategyInfo();
     updateSkillInfo();
     runSimulation();
