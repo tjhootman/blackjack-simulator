@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casino Variance Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --card-bg: #ffffff;
+            --primary: #2563eb;
+            --text: #1f2937;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        h1 { margin-top: 0; text-align: center; }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #eef2ff;
+            border-radius: 8px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        input, select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        button {
+            grid-column: 1 / -1;
+            padding: 12px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover { background-color: #1d4ed8; }
+
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .stat-box { text-align: center; }
+        .stat-val { font-size: 1.2rem; font-weight: bold; display: block; }
+        .stat-label { font-size: 0.8rem; color: #666; }
+
+        /* --- THE FIX: Chart Container --- */
+        .chart-container {
+            position: relative;
+            height: 400px; /* Fixed height stops the infinite growth */
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Casino Variance Visualizer</h1>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Start Bankroll ($)</label>
+            <input type="number" id="bankroll" value="2000">
+        </div>
+        <div class="control-group">
+            <label>Bet Size ($)</label>
+            <input type="number" id="betSize" value="25">
+        </div>
+        <div class="control-group">
+            <label>Hands to Play</label>
+            <input type="number" id="hands" value="1000">
+        </div>
+        <div class="control-group">
+            <label>Simulations (Max 100)</label>
+            <input type="number" id="sims" value="50" max="100">
+        </div>
+        <div class="control-group">
+            <label>Rules (Payout)</label>
+            <select id="rules">
+                <option value="standard">3:2 (Standard)</option>
+                <option value="bad">6:5 (Carnival/Bad)</option>
+            </select>
+        </div>
+        <button onclick="runSimulation()">Run Simulation</button>
+    </div>
+
+    <div class="stats-bar">
+        <div class="stat-box">
+            <span class="stat-val" id="stat-ror">0%</span>
+            <span class="stat-label">Risk of Ruin</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-val" id="stat-avg">$0</span>
+            <span class="stat-label">Avg Ending Bankroll</span>
+        </div>
+        <div class="stat-box">
+            <span class="stat-val" id="stat-survived">0/0</span>
+            <span class="stat-label">Survivors</span>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="chartCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    let myChart = null;
+
+    // --- CORE LOGIC ---
+    function playHandPro(currentBankroll, betSize, is6to5) {
+        const bjPayout = is6to5 ? 1.2 : 1.5;
+
+        // OUTCOMES & WEIGHTS (Corrected for ~0.5% House Edge)
+        const outcomes = [
+            { type: 'BJ',       weight: 0.048, val: bjPayout },
+            { type: 'Win',      weight: 0.358, val: 1.0 },
+            { type: 'DblWin',   weight: 0.040, val: 2.0 },
+            { type: 'Push',     weight: 0.085, val: 0.0 },
+            { type: 'Loss',     weight: 0.427, val: -1.0 },
+            { type: 'DblLoss',  weight: 0.042, val: -2.0 }
+        ];
+
+        const rand = Math.random();
+        let cumulative = 0;
+
+        for (let outcome of outcomes) {
+            cumulative += outcome.weight;
+            if (rand < cumulative) {
+                return currentBankroll + (betSize * outcome.val);
+            }
+        }
+        return currentBankroll - betSize; 
+    }
+
+    // --- MAIN SIMULATION LOOP ---
+    function runSimulation() {
+        const startBankroll = parseFloat(document.getElementById('bankroll').value);
+        const betSize = parseFloat(document.getElementById('betSize').value);
+        const totalHands = parseInt(document.getElementById('hands').value);
+        const simCount = parseInt(document.getElementById('sims').value);
+        const is6to5 = document.getElementById('rules').value === 'bad';
+
+        const allDatasets = [];
+        let ruinedCount = 0;
+        let finalBankrollSum = 0;
+        const labels = Array.from({length: totalHands + 1}, (_, i) => i);
+
+        for (let i = 0; i < simCount; i++) {
+            let bankroll = startBankroll;
+            const dataPoints = [bankroll];
+            let isRuined = false;
+
+            for (let h = 0; h < totalHands; h++) {
+                if (bankroll < betSize) {
+                    bankroll = 0;
+                    isRuined = true;
+                } else {
+                    bankroll = playHandPro(bankroll, betSize, is6to5);
+                }
+                dataPoints.push(bankroll);
+            }
+
+            finalBankrollSum += bankroll;
+            if (isRuined) ruinedCount++;
+
+            let color = 'rgba(150, 150, 150, 0.4)'; // Default Gray
+            if (isRuined) color = 'rgba(255, 99, 132, 0.6)'; // Red
+            else if (bankroll > startBankroll) color = 'rgba(75, 192, 192, 0.4)'; // Green
+
+            allDatasets.push({
+                label: `Sim ${i+1}`,
+                data: dataPoints,
+                borderColor: color,
+                borderWidth: 1,
+                pointRadius: 0, 
+                fill: false,
+                tension: 0.1 
+            });
+        }
+
+        // Stats Update
+        const ror = ((ruinedCount / simCount) * 100).toFixed(1);
+        const avg = (finalBankrollSum / simCount).toFixed(2);
+        
+        const rorEl = document.getElementById('stat-ror');
+        rorEl.innerText = `${ror}%`;
+        rorEl.style.color = ror > 20 ? '#dc2626' : '#16a34a'; // Red/Green text
+        
+        document.getElementById('stat-avg').innerText = `$${avg}`;
+        document.getElementById('stat-survived').innerText = `${simCount - ruinedCount}/${simCount}`;
+
+        renderChart(labels, allDatasets, startBankroll);
+    }
+
+    // --- CHART RENDER ---
+    function renderChart(labels, datasets, startLine) {
+        const ctx = document.getElementById('chartCanvas').getContext('2d');
+
+        if (myChart) myChart.destroy();
+
+        // Add Start Line
+        datasets.push({
+            label: 'Start Bankroll',
+            data: new Array(labels.length).fill(startLine),
+            borderColor: 'black',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            order: 0 
+        });
+
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false, // Fits to the wrapper div
+                animation: false, 
+                plugins: {
+                    legend: { display: false }, 
+                    tooltip: { enabled: false } 
+                },
+                scales: {
+                    x: { display: true, ticks: { maxTicksLimit: 10 } },
+                    y: { display: true }
+                },
+                elements: { line: { tension: 0 } }
+            }
+        });
+    }
+
+    // Initial Run
+    runSimulation();
+</script>
+
+</body>
+</html>
