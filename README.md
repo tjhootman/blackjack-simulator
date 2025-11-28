@@ -3,8 +3,6 @@
 
 A high-performance Single Page Application (SPA) that visualizes the mathematical reality of Blackjack bankroll management.
 
-**Live Demo:** [\[Link to your GitHub Pages\]](https://tjhootman.github.io/blackjack-simulator/)
-
 ![Blackjack Simulator Dashboard](app-screenshot.png)
 
 ## 🎯 The Problem
