@@ -107,7 +107,7 @@
         .stats-bar {
             display: flex;
             justify-content: space-around;
-            margin-bottom: 20px; /* Reduced margin to fit Legend */
+            margin-bottom: 20px;
             padding: 20px;
             background: #0f172a;
             border-radius: 12px;
@@ -128,7 +128,7 @@
             border: 1px solid #334155;
         }
 
-        /* --- LEGEND STYLES --- */
+        /* LEGEND */
         .legend-bar {
             display: flex;
             flex-wrap: wrap;
@@ -155,8 +155,9 @@
         }
 
         .line-dash {
-            width: 20px;
-            height: 2px;
+            width: 25px;
+            height: 0;
+            border-top: 2px dashed #fbbf24;
             margin-right: 8px;
             display: inline-block;
         }
@@ -236,7 +237,7 @@
             <span class="dot" style="background-color: #ef4444;"></span> Ruined ($0)
         </div>
         <div class="legend-item">
-            <span class="line-dash" style="background-color: #fbbf24; border-bottom: 2px dashed #fbbf24;"></span> Start Amount
+            <span class="line-dash"></span> Start Amount
         </div>
     </div>
 </div>
@@ -282,6 +283,7 @@
         const allDatasets = [];
         let ruinedCount = 0;
         let finalBankrollSum = 0;
+        // Generate Label Numbers (0, 1, 2...)
         const labels = Array.from({length: totalHands + 1}, (_, i) => i);
 
         for (let i = 0; i < simCount; i++) {
@@ -333,20 +335,20 @@
             finalBankrollSum += bankroll;
             if (isRuined) ruinedCount++;
 
-            // DYNAMIC COLORING (Matched to Legend)
-            let color = 'rgba(255, 255, 255, 0.1)'; // Default Faint Gray (Survivor)
+            // DYNAMIC COLORING
+            let color = 'rgba(255, 255, 255, 0.1)'; 
             let order = 1;
 
             if (isRuined) {
-                color = 'rgba(239, 68, 68, 0.5)'; // Red
-                order = 2; // Draw ruined lines on top of gray
+                color = 'rgba(239, 68, 68, 0.5)'; 
+                order = 2; 
             }
             else if (bankroll > startBankroll * 2) {
-                color = '#fbbf24'; // Gold (Big Winner)
-                order = 4; // Draw Gold on top of everything
+                color = '#fbbf24'; 
+                order = 4; 
             }
             else if (bankroll > startBankroll) {
-                color = 'rgba(16, 185, 129, 0.5)'; // Green
+                color = 'rgba(16, 185, 129, 0.5)'; 
                 order = 3; 
             }
 
@@ -354,11 +356,11 @@
                 label: `Sim ${i+1}`,
                 data: dataPoints,
                 borderColor: color,
-                borderWidth: (order === 4) ? 2 : 1, // Make Gold lines thicker
+                borderWidth: (order === 4) ? 2 : 1, 
                 pointRadius: 0, 
                 fill: false,
                 tension: 0.1,
-                order: 100 - order // Lower order draws last (on top) in Chart.js
+                order: 100 - order 
             });
         }
 
@@ -387,7 +389,7 @@
             borderWidth: 2,
             borderDash: [5, 5],
             pointRadius: 0,
-            order: 0 // Top priority
+            order: 0 
         });
 
         myChart = new Chart(ctx, {
@@ -399,7 +401,12 @@
                 animation: false, 
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
-                    x: { display: true, ticks: { maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { 
+                        // THE FIX: Switch to Linear to get "Nice" Numbers (100, 200...)
+                        type: 'linear',
+                        display: true, 
+                        grid: { color: 'rgba(255,255,255,0.05)' } 
+                    },
                     y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' } }
                 },
                 elements: { line: { tension: 0 } }
