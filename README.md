@@ -1,8 +1,9 @@
+[![Deploy to GitHub Pages](https://img.shields.io/badge/Deploy-Live%20Demo-brightgreen?style=for-the-badge&logo=github)](https://tjhootman.github.io/blackjack-simulator/)
 # Blackjack Variance & Strategy Simulator
 
 A high-performance Single Page Application (SPA) that visualizes the mathematical reality of Blackjack bankroll management.
 
-**Live Demo:** [Link to your GitHub Pages]
+**Live Demo:** [\[Link to your GitHub Pages\]](https://tjhootman.github.io/blackjack-simulator/)
 
 ![Blackjack Simulator Dashboard](app-screenshot.png)
 
