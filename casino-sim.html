@@ -81,18 +81,8 @@
             font-size: 1rem;
         }
         
-        #strategy {
-            border-color: var(--primary);
-            color: #c4b5fd;
-            font-weight: 600;
-        }
-
-        /* NEW SKILL DROPDOWN STYLE */
-        #skill {
-            border-color: var(--accent);
-            color: #86efac;
-            font-weight: 600;
-        }
+        #strategy { border-color: var(--primary); color: #c4b5fd; font-weight: 600; }
+        #skill { border-color: var(--accent); color: #86efac; font-weight: 600; }
 
         .strategy-info {
             background: rgba(139, 92, 246, 0.1);
@@ -132,8 +122,8 @@
             letter-spacing: 1px;
             transition: transform 0.1s;
         }
-
         button:hover { transform: translateY(-1px); }
+        button:disabled { opacity: 0.7; cursor: wait; }
 
         .stats-bar {
             display: flex;
@@ -245,7 +235,7 @@
                 <option value="bad">6:5 (Carnival)</option>
             </select>
         </div>
-        <button onclick="runSimulation()">Run Simulation</button>
+        <button id="runBtn" onclick="handleRun()">Run Simulation</button>
     </div>
 
     <div class="strategy-info" id="strategyInfo">
@@ -297,23 +287,43 @@
 
     let myChart = null;
 
+    // --- STATIC DATA & HELPERS ---
+    const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+    
     const strategyDescriptions = {
-        flat: {
-            title: "Flat Betting (Standard)",
-            text: "You bet the same amount every hand. This is the safest way to play and minimizes volatility. It usually yields the longest play time."
-        },
-        martingale: {
-            title: "Martingale (The 'Widowmaker')",
-            text: "Double your bet after every loss. Reset to base bet after a win. Warning: Table Limits ($1000+) will prevent you from doubling eventually, leading to crash!"
-        },
-        paroli: {
-            title: "Paroli (The 'Anti-Martingale')",
-            text: "Double your bet after a win (up to 3 times). Reset on loss. This capitalizes on 'hot streaks' without risking your own bankroll aggressively."
-        },
-        dalembert: {
-            title: "D'Alembert (The Grinder)",
-            text: "Increase bet by 1 unit after a loss. Decrease by 1 unit after a win. A balanced system that is safer than Martingale but more aggressive than Flat betting."
-        }
+        flat: { title: "Flat Betting (Standard)", text: "Bet the same amount every hand. Minimizes volatility. Best for long playtime." },
+        martingale: { title: "Martingale (The 'Widowmaker')", text: "Double after loss. Reset after win. Dangerous! Table Limits will eventually force a crash." },
+        paroli: { title: "Paroli (The 'Anti-Martingale')", text: "Double after win (up to 3x). Capitalizes on hot streaks with minimal risk." },
+        dalembert: { title: "D'Alembert (The Grinder)", text: "Increase bet by 1 unit after loss. Decrease after win. Balanced and safer than Martingale." }
+    };
+
+    // --- OPTIMIZED PROBABILITY TABLES (Global Cache) ---
+    // This prevents creating arrays 250,000 times during execution
+    const PROBABILITY_TABLES = {
+        perfect: [
+            { type: 'BJ',       weight: 0.048, val: 1.5 }, // val updated dynamically based on rules
+            { type: 'Win',      weight: 0.358, val: 1.0 },
+            { type: 'DblWin',   weight: 0.040, val: 2.0 },
+            { type: 'Push',     weight: 0.085, val: 0.0 },
+            { type: 'Loss',     weight: 0.427, val: -1.0 },
+            { type: 'DblLoss',  weight: 0.042, val: -2.0 }
+        ],
+        average: [
+            { type: 'BJ',       weight: 0.048, val: 1.5 },
+            { type: 'Win',      weight: 0.350, val: 1.0 },
+            { type: 'DblWin',   weight: 0.035, val: 2.0 },
+            { type: 'Push',     weight: 0.085, val: 0.0 },
+            { type: 'Loss',     weight: 0.435, val: -1.0 },
+            { type: 'DblLoss',  weight: 0.047, val: -2.0 }
+        ],
+        poor: [
+            { type: 'BJ',       weight: 0.048, val: 1.5 },
+            { type: 'Win',      weight: 0.340, val: 1.0 },
+            { type: 'DblWin',   weight: 0.030, val: 2.0 },
+            { type: 'Push',     weight: 0.085, val: 0.0 },
+            { type: 'Loss',     weight: 0.444, val: -1.0 },
+            { type: 'DblLoss',  weight: 0.053, val: -2.0 }
+        ]
     };
 
     function updateStrategyInfo() {
@@ -325,99 +335,67 @@
         setTimeout(() => box.style.borderColor = '#8b5cf6', 300);
     }
 
-    function playHandPro(currentBankroll, betSize, is6to5, skillLevel) {
-        const bjPayout = is6to5 ? 1.2 : 1.5;
+    // Handle button click with loading state
+    function handleRun() {
+        const btn = document.getElementById('runBtn');
+        btn.innerHTML = "Simulating...";
+        btn.disabled = true;
 
-        // --- SKILL LEVEL LOGIC ---
-        // We adjust the probability weights to simulate errors.
-        
-        let weights = [];
-        // DEFAULT: Perfect Strategy (House Edge ~0.5%)
-        if (skillLevel === 'perfect') {
-            weights = [
-                { type: 'BJ',       weight: 0.048, val: bjPayout },
-                { type: 'Win',      weight: 0.358, val: 1.0 },
-                { type: 'DblWin',   weight: 0.040, val: 2.0 },
-                { type: 'Push',     weight: 0.085, val: 0.0 },
-                { type: 'Loss',     weight: 0.427, val: -1.0 },
-                { type: 'DblLoss',  weight: 0.042, val: -2.0 }
-            ];
-        } 
-        // AVERAGE: Small mistakes (House Edge ~2.0%)
-        // Less wins, more losses
-        else if (skillLevel === 'average') {
-            weights = [
-                { type: 'BJ',       weight: 0.048, val: bjPayout },
-                { type: 'Win',      weight: 0.350, val: 1.0 }, // -0.8%
-                { type: 'DblWin',   weight: 0.035, val: 2.0 }, // -0.5%
-                { type: 'Push',     weight: 0.085, val: 0.0 },
-                { type: 'Loss',     weight: 0.435, val: -1.0 }, // +0.8%
-                { type: 'DblLoss',  weight: 0.047, val: -2.0 }  // +0.5%
-            ];
-        }
-        // POOR: Big mistakes (House Edge ~4.0%)
-        // Missed doubles, hitting on bust cards
-        else {
-            weights = [
-                { type: 'BJ',       weight: 0.048, val: bjPayout },
-                { type: 'Win',      weight: 0.340, val: 1.0 }, // -1.8%
-                { type: 'DblWin',   weight: 0.030, val: 2.0 }, // -1.0%
-                { type: 'Push',     weight: 0.085, val: 0.0 },
-                { type: 'Loss',     weight: 0.444, val: -1.0 }, // +1.7%
-                { type: 'DblLoss',  weight: 0.053, val: -2.0 }  // +1.1%
-            ];
-        }
+        // Small timeout allows UI to update before heavy math freezes thread
+        setTimeout(() => {
+            runSimulation();
+            btn.innerHTML = "Run Simulation";
+            btn.disabled = false;
+        }, 50);
+    }
+
+    function playHandOptimized(currentBankroll, betSize, is6to5, skillKey) {
+        const outcomes = PROBABILITY_TABLES[skillKey];
+        const bjPayout = is6to5 ? 1.2 : 1.5;
 
         const rand = Math.random();
         let cumulative = 0;
-        for (let outcome of weights) {
-            cumulative += outcome.weight;
+        
+        for (let i = 0; i < outcomes.length; i++) {
+            cumulative += outcomes[i].weight;
             if (rand < cumulative) {
-                return currentBankroll + (betSize * outcome.val);
+                // Special check: If outcome is Blackjack, apply correct payout rules
+                let val = outcomes[i].val;
+                if (outcomes[i].type === 'BJ') val = bjPayout;
+                
+                return currentBankroll + (betSize * val);
             }
         }
         return currentBankroll - betSize; 
     }
 
     function runSimulation() {
+        // --- INPUTS ---
         let startBankroll = parseFloat(document.getElementById('bankroll').value);
         let baseBet = parseFloat(document.getElementById('betSize').value);
         let tableMax = parseFloat(document.getElementById('tableMax').value);
         let totalHands = parseInt(document.getElementById('hands').value);
         let simCount = parseInt(document.getElementById('sims').value);
-        
         const strategy = document.getElementById('strategy').value;
         const is6to5 = document.getElementById('rules').value === 'bad';
-        const skillLevel = document.getElementById('skill').value; // NEW
+        const skillLevel = document.getElementById('skill').value;
 
+        // --- SAFETY CHECKS ---
         if (simCount > 100) { simCount = 100; document.getElementById('sims').value = 100; }
         if (simCount < 1) simCount = 1;
-
         if (totalHands > 5000) { totalHands = 5000; document.getElementById('hands').value = 5000; }
         if (totalHands < 10) totalHands = 10;
-
-        if (startBankroll < 5) {
-            startBankroll = 5;
-            document.getElementById('bankroll').value = 5;
-        }
-
-        if (baseBet < 1) {
-            baseBet = 1;
-            document.getElementById('betSize').value = 1;
-        }
-        if (baseBet > startBankroll) {
-            baseBet = startBankroll; 
-            document.getElementById('betSize').value = startBankroll;
-        }
-
-        if (tableMax < baseBet) {
-            tableMax = baseBet;
-            document.getElementById('tableMax').value = baseBet;
-        }
+        if (startBankroll < 5) { startBankroll = 5; document.getElementById('bankroll').value = 5; }
+        if (baseBet < 1) { baseBet = 1; document.getElementById('betSize').value = 1; }
+        if (baseBet > startBankroll) { baseBet = startBankroll; document.getElementById('betSize').value = startBankroll; }
+        if (tableMax < baseBet) { tableMax = baseBet; document.getElementById('tableMax').value = baseBet; }
 
         const allDatasets = [];
         let ruinedCount = 0;
         let finalBankrollSum = 0;
+
+        // DYNAMIC LINE THICKNESS (Thicker if fewer sims)
+        const lineWidth = simCount < 10 ? 2.5 : 1;
 
         for (let i = 0; i < simCount; i++) {
             let bankroll = startBankroll;
@@ -435,10 +413,10 @@
                     if (currentBet > bankroll) currentBet = bankroll;
                     if (currentBet > tableMax) currentBet = tableMax;
 
-                    // Pass skillLevel to the game engine
-                    let newBankroll = playHandPro(bankroll, currentBet, is6to5, skillLevel);
+                    let newBankroll = playHandOptimized(bankroll, currentBet, is6to5, skillLevel);
                     let profit = newBankroll - bankroll;
                     
+                    // Strategy Engine
                     if (strategy === 'martingale') {
                         if (profit < 0) currentBet *= 2;
                         else if (profit > 0) currentBet = baseBet;
@@ -471,24 +449,15 @@
             let color = 'rgba(255, 255, 255, 0.1)'; 
             let order = 1;
 
-            if (isRuined) {
-                color = 'rgba(239, 68, 68, 0.5)'; 
-                order = 2; 
-            }
-            else if (bankroll > startBankroll * 2) {
-                color = '#fbbf24'; 
-                order = 4; 
-            }
-            else if (bankroll > startBankroll) {
-                color = 'rgba(16, 185, 129, 0.5)'; 
-                order = 3; 
-            }
+            if (isRuined) { color = 'rgba(239, 68, 68, 0.5)'; order = 2; }
+            else if (bankroll > startBankroll * 2) { color = '#fbbf24'; order = 4; }
+            else if (bankroll > startBankroll) { color = 'rgba(16, 185, 129, 0.5)'; order = 3; }
 
             allDatasets.push({
                 label: `Sim ${i+1}`,
                 data: dataPoints,
                 borderColor: color,
-                borderWidth: (order === 4) ? 2 : 1, 
+                borderWidth: (order === 4) ? lineWidth + 1 : lineWidth, // Gold is extra thick
                 pointRadius: 0, 
                 fill: false,
                 tension: 0.1,
@@ -496,14 +465,16 @@
             });
         }
 
+        // Stats Calculation
         const ror = ((ruinedCount / simCount) * 100).toFixed(1);
-        const avg = (finalBankrollSum / simCount).toFixed(2);
+        const avgRaw = finalBankrollSum / simCount;
         
         const rorEl = document.getElementById('stat-ror');
         rorEl.innerText = `${ror}%`;
         rorEl.style.color = ror > 20 ? '#ef4444' : '#10b981';
         
-        document.getElementById('stat-avg').innerText = `$${avg}`;
+        // FORMATTED CURRENCY
+        document.getElementById('stat-avg').innerText = USD.format(avgRaw);
         document.getElementById('stat-survived').innerText = `${simCount - ruinedCount}/${simCount}`;
 
         renderChart(allDatasets, startBankroll, totalHands);
