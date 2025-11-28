@@ -51,7 +51,6 @@ No build steps or `npm install` required. This is a lightweight, dependency-free
 ## 🔮 Future Roadmap
 * [ ] **CSV Export:** Allow users to download simulation data for Excel analysis.
 * [ ] **Card Counting Toggle:** Implement a "Hi-Lo" system variable that shifts the Edge to the player (+1.0%) to visualize advantage play.
-* [ ] **Mobile Optimization:** Further refine the controls grid for small touchscreens.
 
 ## ⚖️ Disclaimer
 This software is for **educational and entertainment purposes only**. It demonstrates the mathematics of probability and does not guarantee results in real-world gambling. The "Winning Strategies" simulated here (like Martingale) are mathematically proven to fail in the long run due to house edge and table limits. **Gamble responsibly.**
