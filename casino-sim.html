@@ -87,6 +87,13 @@
             font-weight: 600;
         }
 
+        /* NEW SKILL DROPDOWN STYLE */
+        #skill {
+            border-color: var(--accent);
+            color: #86efac;
+            font-weight: 600;
+        }
+
         .strategy-info {
             background: rgba(139, 92, 246, 0.1);
             border: 1px solid var(--primary);
@@ -204,6 +211,16 @@
             <label>Table Limit (Max)</label>
             <input type="number" id="tableMax" value="1000" min="1">
         </div>
+        
+        <div class="control-group">
+            <label style="color: #86efac;">Player Skill</label>
+            <select id="skill">
+                <option value="perfect">Perfect (Pro)</option>
+                <option value="average">Average (Tourist)</option>
+                <option value="poor">Poor (Drunk)</option>
+            </select>
+        </div>
+
         <div class="control-group">
             <label style="color: #a78bfa;">Betting Strategy</label>
             <select id="strategy" onchange="updateStrategyInfo()">
@@ -308,20 +325,52 @@
         setTimeout(() => box.style.borderColor = '#8b5cf6', 300);
     }
 
-    function playHandPro(currentBankroll, betSize, is6to5) {
+    function playHandPro(currentBankroll, betSize, is6to5, skillLevel) {
         const bjPayout = is6to5 ? 1.2 : 1.5;
-        const outcomes = [
-            { type: 'BJ',       weight: 0.048, val: bjPayout },
-            { type: 'Win',      weight: 0.358, val: 1.0 },
-            { type: 'DblWin',   weight: 0.040, val: 2.0 },
-            { type: 'Push',     weight: 0.085, val: 0.0 },
-            { type: 'Loss',     weight: 0.427, val: -1.0 },
-            { type: 'DblLoss',  weight: 0.042, val: -2.0 }
-        ];
+
+        // --- SKILL LEVEL LOGIC ---
+        // We adjust the probability weights to simulate errors.
+        
+        let weights = [];
+        // DEFAULT: Perfect Strategy (House Edge ~0.5%)
+        if (skillLevel === 'perfect') {
+            weights = [
+                { type: 'BJ',       weight: 0.048, val: bjPayout },
+                { type: 'Win',      weight: 0.358, val: 1.0 },
+                { type: 'DblWin',   weight: 0.040, val: 2.0 },
+                { type: 'Push',     weight: 0.085, val: 0.0 },
+                { type: 'Loss',     weight: 0.427, val: -1.0 },
+                { type: 'DblLoss',  weight: 0.042, val: -2.0 }
+            ];
+        } 
+        // AVERAGE: Small mistakes (House Edge ~2.0%)
+        // Less wins, more losses
+        else if (skillLevel === 'average') {
+            weights = [
+                { type: 'BJ',       weight: 0.048, val: bjPayout },
+                { type: 'Win',      weight: 0.350, val: 1.0 }, // -0.8%
+                { type: 'DblWin',   weight: 0.035, val: 2.0 }, // -0.5%
+                { type: 'Push',     weight: 0.085, val: 0.0 },
+                { type: 'Loss',     weight: 0.435, val: -1.0 }, // +0.8%
+                { type: 'DblLoss',  weight: 0.047, val: -2.0 }  // +0.5%
+            ];
+        }
+        // POOR: Big mistakes (House Edge ~4.0%)
+        // Missed doubles, hitting on bust cards
+        else {
+            weights = [
+                { type: 'BJ',       weight: 0.048, val: bjPayout },
+                { type: 'Win',      weight: 0.340, val: 1.0 }, // -1.8%
+                { type: 'DblWin',   weight: 0.030, val: 2.0 }, // -1.0%
+                { type: 'Push',     weight: 0.085, val: 0.0 },
+                { type: 'Loss',     weight: 0.444, val: -1.0 }, // +1.7%
+                { type: 'DblLoss',  weight: 0.053, val: -2.0 }  // +1.1%
+            ];
+        }
 
         const rand = Math.random();
         let cumulative = 0;
-        for (let outcome of outcomes) {
+        for (let outcome of weights) {
             cumulative += outcome.weight;
             if (rand < cumulative) {
                 return currentBankroll + (betSize * outcome.val);
@@ -331,14 +380,15 @@
     }
 
     function runSimulation() {
-        // --- INPUTS & CLAMPS ---
         let startBankroll = parseFloat(document.getElementById('bankroll').value);
         let baseBet = parseFloat(document.getElementById('betSize').value);
         let tableMax = parseFloat(document.getElementById('tableMax').value);
         let totalHands = parseInt(document.getElementById('hands').value);
         let simCount = parseInt(document.getElementById('sims').value);
+        
         const strategy = document.getElementById('strategy').value;
         const is6to5 = document.getElementById('rules').value === 'bad';
+        const skillLevel = document.getElementById('skill').value; // NEW
 
         if (simCount > 100) { simCount = 100; document.getElementById('sims').value = 100; }
         if (simCount < 1) simCount = 1;
@@ -371,7 +421,6 @@
 
         for (let i = 0; i < simCount; i++) {
             let bankroll = startBankroll;
-            // FIX: Using {x,y} objects for Linear Scale support
             const dataPoints = [{x: 0, y: bankroll}];
             let isRuined = false;
 
@@ -386,7 +435,8 @@
                     if (currentBet > bankroll) currentBet = bankroll;
                     if (currentBet > tableMax) currentBet = tableMax;
 
-                    let newBankroll = playHandPro(bankroll, currentBet, is6to5);
+                    // Pass skillLevel to the game engine
+                    let newBankroll = playHandPro(bankroll, currentBet, is6to5, skillLevel);
                     let profit = newBankroll - bankroll;
                     
                     if (strategy === 'martingale') {
@@ -412,7 +462,6 @@
                     
                     bankroll = newBankroll;
                 }
-                // FIX: Push X/Y object
                 dataPoints.push({x: h, y: bankroll});
             }
 
@@ -464,7 +513,6 @@
         const ctx = document.getElementById('chartCanvas').getContext('2d');
         if (myChart) myChart.destroy();
 
-        // FIX: Start Line using 2 points for optimization
         datasets.push({
             label: 'Start Bankroll',
             data: [{x: 0, y: startLine}, {x: maxX, y: startLine}],
@@ -484,12 +532,7 @@
                 animation: false, 
                 plugins: { legend: { display: false }, tooltip: { enabled: false } },
                 scales: {
-                    x: { 
-                        type: 'linear', // Works perfectly now with {x,y} data
-                        display: true, 
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        max: maxX
-                    },
+                    x: { type: 'linear', display: true, grid: { color: 'rgba(255,255,255,0.05)' }, max: maxX },
                     y: { display: true, grid: { color: 'rgba(255,255,255,0.05)' } }
                 },
                 elements: { line: { tension: 0 } }
